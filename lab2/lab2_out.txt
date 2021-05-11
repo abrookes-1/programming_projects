@@ -1,0 +1,51 @@
+./javascript -test -lab2
+running Lab #2 tests...
+running "Simple Evaluator" tests...
+  pass test 1
+  pass test 2
+  pass test 3
+  pass test 4
+  pass test 5
+  pass test 6
+  pass test 7
+  pass test 8
+  pass test 9
+  pass test 10
+  pass test 11
+  pass test 12
+  pass test 13
+  pass test 14
+  pass test 15
+running "Simple Typechecker" tests...
+  pass test "malformed1"
+  pass test "malformed2"
+  pass test "simple add"
+  pass test "right add"
+  pass test "num equal"
+  pass test "bool equal"
+  pass test "comparison"
+running "Evaluator" tests...
+  pass test 1
+  pass test 2
+  pass test 3
+  pass test 4
+  pass test 5
+  pass test 6
+  pass test 7
+  pass test 8
+  pass test 9
+  pass test 10
+  pass test 11
+  pass test 12
+running "Typechecker" tests...
+  pass test 1
+  pass test 2
+  pass test 3
+  pass test 4
+  pass test 5
+  pass test 6
+  pass test 7
+  pass test 8
+  pass test 9
+  pass test 10
+total = 44; failed = 0

@@ -1,0 +1,506 @@
+// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Operator_Precedence
+
+parser Start : program_t =
+  | Program eof # { $1 }
+;
+
+parser Program =
+  | Expr1              # ExprProgram
+  | Stmt ';':~ Program # StmtProgram
+;
+
+parser Stmt =
+  | ConstKw:~ Ident1 '=':~ Expr1 # { ConstStmt(get_current_pos (), $2, $4) } : (ConstStmt of pos_t * ident_t * expr_t)
+  | LetKw:~ Ident1 '=':~ Expr1   # { LetStmt(get_current_pos (), $2, $4) } : (LetStmt of pos_t * ident_t * expr_t)
+  | Expr1 '=':~ Expr1           # AssignStmt
+;
+
+ast Typ : typ_t =
+  | ~ # : (UnitType)
+  | ~ # : (BoolType)
+  | ~ # : (NumType)
+  | ~ # : (StrType)
+  | Typ* # : (TupleType of typ_t list)
+  | Typ Typ # : (FuncType of typ_t * typ_t)
+;
+
+ast VarAccess =
+  | ~ # : (Mutable)
+  | ~ # : (Immutable)
+;
+
+ast Uop =
+  | ~ # : (NotUop)
+  | ~ # : (NegUop)
+;
+
+ast Bop =
+  | ~ # : (AndBop)
+  | ~ # : (OrBop)
+  | ~ # : (PlusBop)
+  | ~ # : (MinusBop)
+  | ~ # : (TimesBop)
+  | ~ # : (DivBop)
+  | ~ # : (EqBop)
+  | ~ # : (NeqBop)
+  | ~ # : (LtBop)
+  | ~ # : (LteBop)
+  | ~ # : (GtBop)
+  | ~ # : (GteBop)
+;
+
+ast Expr =
+  | ~ # : (VarExpr of pos_t * ident_t)
+  | ~ # : (ValExpr of pos_t * value_t)
+  | ~ # : (UopExpr of pos_t * uop_t * expr_t)
+  | ~ # : (BopExpr of pos_t * expr_t * bop_t * expr_t)
+  | ~ # : (IfExpr of pos_t * expr_t * expr_t * expr_t)
+  | ~ # : (PrintExpr of pos_t * expr_t)
+  | ~ # : (CallExpr of pos_t * expr_t * expr_t list)
+  | ~ # : (FieldExpr of pos_t * expr_t * ident_t)
+  | ~ # : (ObjectExpr of pos_t * field_t list)
+;
+
+parser Expr1 : expr_t =
+  | Ident1                                    # { VarExpr(get_current_pos (),$1) }
+  | Value1                                    # { ValExpr(get_current_pos (),$1) }
+  | '-' Expr1                                 # { UopExpr(get_current_pos (),NegUop,$2) } @prec:=3
+  | '!'@assoc:="nonassoc"@prec:=3:~ Expr1     # { UopExpr(get_current_pos (),NotUop,$2) }
+  | Expr1 '*'@assoc:="left"@prec:=4:~ Expr1   # { BopExpr(get_current_pos (),$1,TimesBop,$3) }
+  | Expr1 '/'@assoc:="left"@prec:=4:~ Expr1   # { BopExpr(get_current_pos (),$1,DivBop,$3) }
+  | Expr1 '+'@assoc:="left"@prec:=5:~ Expr1   # { BopExpr(get_current_pos (),$1,PlusBop,$3) }
+  | Expr1 '-'@assoc:="left"@prec:=5:~ Expr1   # { BopExpr(get_current_pos (),$1,MinusBop,$3) }
+  | Expr1 "<="@assoc:="left"@prec:=7:~ Expr1  # { BopExpr(get_current_pos (),$1,LteBop,$3) }
+  | Expr1 '<'@assoc:="left"@prec:=7:~ Expr1   # { BopExpr(get_current_pos (),$1,LtBop,$3) }
+  | Expr1 ">="@assoc:="left"@prec:=7:~ Expr1  # { BopExpr(get_current_pos (),$1,GteBop,$3) }
+  | Expr1 '>'@assoc:="left"@prec:=7:~ Expr1   # { BopExpr(get_current_pos (),$1,GtBop,$3) }
+  | Expr1 "==="@assoc:="left"@prec:=8:~ Expr1 # { BopExpr(get_current_pos (),$1,EqBop,$3) }
+  | Expr1 "!=="@assoc:="left"@prec:=8:~ Expr1 # { BopExpr(get_current_pos (),$1,NeqBop,$3) }
+  | Expr1 "&&"@assoc:="left"@prec:=9:~ Expr1  # { BopExpr(get_current_pos (),$1,AndBop,$3) }
+  | Expr1 "||"@assoc:="left"@prec:=10:~ Expr1 # { BopExpr(get_current_pos (),$1,OrBop,$3) }
+  | Expr1 '?'@assoc:="nonassoc"@prec:=11:~
+    Expr1 ':'@assoc:="nonassoc"@prec:=12:~
+    Expr1                                     # { IfExpr(get_current_pos (),$1,$3,$5) }
+  | "console":~ '.':~
+    "log":~ '(':~ Expr1 ')':~                 # { PrintExpr(get_current_pos (),$5) }
+  | Expr1 '('@assoc:="nonassoc"@prec:=1:~
+    ExprList ')':~                            # { CallExpr(get_current_pos (), $1,$3) }
+  | Expr1 '.'@assoc:="left"@prec:=2:~ Ident1  # { FieldExpr(get_current_pos (),$1,$3) }
+  | '{':~ FieldList '}':~                     # { ObjectExpr(get_current_pos (),$2) }
+  | '(':~ Expr1 ')':~                         # { $2 }
+;
+
+ast Value =
+  | ~ # : (NumVal of float)
+  | ~ # : (BoolVal of bool)
+  | ~ # : (StrVal of string)
+  | ~ # : (UndefVal)
+  | ~ # : (ClosureVal of name_map_t * lambda_t)
+  | ~ # : (RefVal of address_t)
+;
+
+ast Ident =
+  | ~ # : string
+;
+
+ast Address =
+  | ~ # : int
+;
+
+ast TypedIdent =
+  | ~ # : (ident_t * typ_t option)
+;
+
+ast NameMap =
+  | ~ # : ((int) StringMap.t)
+;
+
+ast Environment =
+  | ~ # : (name_map_t list * ident_map_t)
+;
+
+ast IdentMap =
+  | ~ # : ((var_access_t * value_t) IntMap.t)
+;
+
+ast Lambda =
+  | ~ # : (ident_t option * typed_ident_t list * block_t * typ_t option)
+  // name, params, body, return_type
+;
+
+parser Value1 : value_t =
+  | Number     # { NumVal($1) }
+  | "NaN"      # { NumVal(Float.nan) }
+  | "Infinity" # { NumVal(Float.infinity) }
+  | Bool       # { BoolVal($1) }
+  | String     # { StrVal($1) }
+  | UndefKw    # { UndefVal }
+  | Lambda1    # { ClosureVal(StringMap.empty, $1) }
+;
+
+parser Lambda1 : lambda_t =
+  | FuncKw:~ Ident1? '(':~ IdentList ')':~ '{':~ Block '}':~ # { ($2, List.map (fun v -> (v,None)) $4, $7, None) }
+;
+
+parser Block : block_t =
+  | RetKw Expr1      # ReturnBlock
+  | Stmt ';':~ Block # StmtBlock
+;
+
+parser FieldList :(field_t list) =
+  | ~                             # { [] }
+  | Field (',':~ Field # { $2 })* # { $1::$2 }
+;
+
+parser ExprList :(expr_t list) =
+  | ~                             # { [] }
+  | Expr1 (',':~ Expr1 # { $2 })* # { $1::$2 }
+;
+
+parser IdentList :(ident_t list) =
+  | ~                               # { [] }
+  | Ident1 (',':~ Ident1 # { $2 })* # { $1::$2 }
+;
+
+parser Field : (ident_t * expr_t) =
+  | Ident1 ':':~ Expr1 # { ($1, $3) }
+;
+
+parser Bool : bool =
+  | TrueKw # { true }
+  | FalseKw # { false }
+;
+
+keyword ConstKw = "const" ;
+keyword LetKw   = "let" ;
+keyword FuncKw  = "function" ;
+keyword RetKw   = "return" ;
+keyword UndefKw = "undefined" ;
+keyword TrueKw = "true" ;
+keyword FalseKw = "false" ;
+
+lexer Ident1 @map:=true @order:=300 =
+  | [a-zA-Z_][0-9a-zA-Z_]*
+;
+
+lexer Number : float =
+  | [0-9]* ('.' [0-9]+)?
+;
+
+lexer String @newline:=true {my_unescaped (fst (strip_quotes x))} =
+  | '"' (('\\' ('\\' | '"' | '\'' | [ntbr] | '\n' | [0-9a-fA-F] [0-9a-fA-F])) | [^\\\"])* '"'
+;
+
+// throw away comments
+lexer SingleLineComment @newline:=true :~ =
+  | "//" [^\n]*
+;
+
+lexer MultiLineComment @newline:=true :~ =
+  | "/*" .. "*/"
+;
+
+// throw away whitespace (while remembering the position info)
+lexer Blanks @newline:=true @order:=290 :~ =
+  | [\r\n\t ]+
+;
+
+property utils_pre_code = {
+  module IntMap = Map.Make(
+  struct
+    type t = int
+    let compare = compare
+  end)
+
+  module StringMap = Map.Make(
+  struct
+    type t = string
+    let compare = compare
+  end)
+
+  let my_unescaped s =
+    let s = Str.global_replace (Str.regexp "[\\][\r][\n]") "" s in
+    let s2 = Str.global_replace (Str.regexp "[\\][\n]") "" s in
+    Scanf.unescaped s2
+
+  let strip_quotes (s : string) : (string*bool) =
+    let len = String.length s in
+    if ((len >= 2) && (String.get s 0)='"' && (String.get s (len-1))='"')
+    then (String.sub s 1 (len-2),true) else (s,false)
+};
+
+property main_code = {
+
+open Javascript_ast;;
+
+(* exception indicating that a program is more
+ * than just a single expression *)
+exception NotExpr of program_t
+(* exception indicating unimplemented input
+ * expression *)
+exception UndeclaredVar of ident_t
+exception UnimplementedExpr of expr_t 
+exception UnimplementedStmt of stmt_t 
+
+(* add printer for above exceptions *)
+let _ = Printexc.register_printer (fun ex -> match ex with
+| NotExpr(p) -> Some(Printf.sprintf "NotExpr(%s)" (str_program p))
+| UndeclaredVar(i) -> Some(Printf.sprintf "UndeclaredVar(%s)" i)
+| UnimplementedExpr(e) -> Some(Printf.sprintf "Unimplemented(%s)" (str_expr e))
+| UnimplementedStmt(s) -> Some(Printf.sprintf "Unimplemented(%s)" (str_stmt s))
+| _ -> None)
+
+(* extract expression from a single-expression program *)
+let get_expr = fun p ->
+  match p with
+  | ExprProgram(_,e) -> e
+  | _ -> raise (NotExpr(p))
+
+
+let parse_string (s : string) = 
+   Javascript_parser.start Javascript_lexer.token (Lexing.from_string s)
+
+(* parse input string as an expression *)
+let parse_expr = fun s ->
+  let p = parse_string s in
+  get_expr p
+};
+
+property ast_code = {
+
+(* obtain most recent binding of variable x in environment env *)
+(* NOTE - type 'a is intended to be (var_access_t*value_t) *)
+let read_environment : (environment_t*string) -> 'a option =
+fun (env,x) ->
+  let (name_map,val_map) = env in
+  try Some(IntMap.find (StringMap.find x (List.hd name_map)) val_map)
+  with _ -> None
+
+let unique_id = ref 0
+
+(* push a new binding for variable x into the environment env *)
+(* NOTE - type 'a is intended to be (var_access_t*value_t) *)
+let push_environment : (environment_t*string*'a) -> environment_t =
+fun (env,x,v) ->
+  let id = !unique_id in
+  unique_id := !unique_id + 1;
+  let (name_map,val_map) = env in
+  let nm2 = (match name_map with
+    | a::more -> (StringMap.add x id a)::more
+    | _ -> [StringMap.add x id StringMap.empty]
+  ) in
+  (nm2, IntMap.add id v val_map)
+
+(*
+// push a new binding of x into the environment
+    def pushEnvironment(env : Environment, x : String, ae : (VarAccess,Value)) : Environment = {
+        val id = uniqueId
+        uniqueId = uniqueId + 1
+        val (a,s) = env
+        val a2 = a match {
+            case m::more => (m + (x -> id))::more
+            case _ => List(Map(x -> id))
+        }
+        (a2,s + (id -> ae))
+    }*)
+
+let empty_env = ([StringMap.empty],IntMap.empty)
+
+let eq_float = fun (n1,n2) -> (Float.compare n1 n2)=0
+
+let str_float = fun n ->
+  if (eq_float (n,Float.nan)) then "NaN"
+  else if (eq_float (n,Float.infinity)) then "Infinity"
+  else if (eq_float (n,Float.neg_infinity)) then "-Infinity"
+  else
+    let s = Printf.sprintf "%g" n in
+    let len1 = (String.length s)-1 in
+    if (String.get s len1)='.'
+    then String.sub s 0 len1
+    else s
+
+let rec str_typ (t : typ_t) = match t with
+| UnitType -> "undefined"
+| BoolType -> "boolean"
+| NumType -> "number"
+| StrType -> "string"
+| TupleType(tl) -> Printf.sprintf "(%s)" (str_x_list str_typ tl ", ")
+| FuncType(t1,t2) -> Printf.sprintf "%s -> %s" (str_typ t1) (str_typ t2)
+
+let rec str_program (p : program_t) = match p with
+  | ExprProgram(_,e) -> str_expr e
+  | StmtProgram(_,s,p) -> Printf.sprintf "%s; %s" (str_stmt s) (str_program p)
+
+and str_stmt (s : stmt_t) = match s with
+  | ConstStmt(_,v,e) -> Printf.sprintf "const %s = %s" (str_ident v) (str_expr e)
+  | LetStmt(_,v,e) -> Printf.sprintf "let %s = %s" (str_ident v) (str_expr e)
+  | AssignStmt(_,e1,e2) -> Printf.sprintf "%s = %s" (str_expr e1) (str_expr e2)
+
+and str_expr (e : expr_t) = match e with
+  | VarExpr(_,v) -> Printf.sprintf "%s" (str_ident v)
+  | ValExpr(_,v) -> Printf.sprintf "%s" (str_value v)
+  | UopExpr(_,uop,e) -> Printf.sprintf "(%s %s)" (str_uop uop) (str_expr e)
+  | BopExpr(_,e1,bop,e2) -> Printf.sprintf "(%s %s %s)" (str_expr e1) (str_bop bop) (str_expr e2)
+  | CallExpr(_,e1,e2) -> Printf.sprintf "%s(%s)" (str_expr e1) (str_x_list str_expr e2 ", ")
+  | IfExpr(_,e1,e2,e3) -> Printf.sprintf "(%s ? %s : %s)" (str_expr e1) (str_expr e2) (str_expr e3)
+  | PrintExpr(_,e) -> Printf.sprintf "console.log(%s)" (str_expr e)
+  | FieldExpr(_,e,f) -> Printf.sprintf "%s.%s" (str_expr e) (str_ident f)
+  | ObjectExpr(_,fl) -> Printf.sprintf "{ %s }" (str_x_list (fun (f,e) -> Printf.sprintf "%s:%s" (str_ident f) (str_expr e)) fl ", ")
+
+and str_bop (b : bop_t) = match b with
+  | AndBop -> "&&"
+  | OrBop -> "||"
+  | PlusBop -> "+"
+  | MinusBop -> "-"
+  | TimesBop -> "*"
+  | DivBop -> "/"
+  | EqBop -> "==="
+  | NeqBop -> "!=="
+  | LtBop -> "<"
+  | LteBop -> "<="
+  | GtBop -> ">"
+  | GteBop -> ">="
+
+and str_uop (u : uop_t) = match u with
+  | NotUop -> "!"
+  | NegUop -> "-"
+
+and str_value (v : value_t) = match v with
+  | NumVal(n) -> str_float n
+  | BoolVal(b) -> string_of_bool b
+  | StrVal(s) -> Printf.sprintf "\"%s\"" s
+  | UndefVal -> "undefined"
+  | ClosureVal(_,(name,params,bl,_)) -> Printf.sprintf "function %s(%s) { %s }" (str_option (fun x -> x) name) (str_x_list str_typed_var params ", ") (str_block bl)
+  | RefVal(_) -> failwith "cannot print reference"
+
+and str_block (bl : block_t) = match bl with
+  | ReturnBlock(_,e) -> Printf.sprintf "return %s" (str_expr e)
+  | StmtBlock(_,s,bl) -> Printf.sprintf "%s; %s" (str_stmt s) (str_block bl)
+
+and str_typed_var (tv : typed_ident_t) = match tv with
+  | (v,t) -> v
+
+and str_ident (x : ident_t) = x
+
+let rec eq_typ (t1 : typ_t) (t2 : typ_t) = match (t1,t2) with
+| (UnitType,UnitType) -> true
+| (BoolType,BoolType) -> true
+| (NumType,NumType) -> true
+| (StrType,StrType) -> true
+| (TupleType(tl1),TupleType(tl2)) -> eq_list eq_typ tl1 tl2
+| (FuncType(ta1,tb1),FuncType(ta2,tb2)) -> (eq_typ ta1 ta2) && (eq_typ tb1 tb2)
+| _ -> false
+
+let rec eq_program (p1 : program_t) (p2 : program_t) = match (p1,p2) with
+  | (ExprProgram(_,e1),ExprProgram(_,e2)) -> eq_expr e1 e2
+  | (StmtProgram(_,s1,p1),StmtProgram(_,s2,p2)) -> (eq_stmt s1 s2) && (eq_program p1 p2)
+  | _ -> false
+
+and eq_stmt (s1 : stmt_t) (s2 : stmt_t) = match (s1,s2) with
+  | (ConstStmt(_,v1,e1),ConstStmt(_,v2,e2)) -> (eq_ident v1 v2) && (eq_expr e1 e2)
+  | (LetStmt(_,v1,e1),LetStmt(_,v2,e2)) -> (eq_ident v1 v2) && (eq_expr e1 e2)
+  | (AssignStmt(_,ea1,eb1),AssignStmt(_,ea2,eb2)) -> (eq_expr ea1 ea2) && (eq_expr eb1 eb2)
+  | _ -> false
+
+and eq_expr (e1 : expr_t) (e2 : expr_t) = match (e1,e2) with
+  | (VarExpr(_,v1),VarExpr(_,v2)) -> eq_ident v1 v2
+  | (ValExpr(_,v1),ValExpr(_,v2)) -> eq_value v1 v2
+  | (UopExpr(_,uop1,e1),UopExpr(_,uop2,e2)) -> (eq_uop uop1 uop2) && (eq_expr e1 e2)
+  | (BopExpr(_,ea1,bop1,eb1),BopExpr(_,ea2,bop2,eb2)) -> (eq_expr ea1 ea2) && (eq_bop bop1 bop2) && (eq_expr ea2 eb2)
+  | (CallExpr(_,ea1,eb1),CallExpr(_,ea2,eb2)) -> (eq_expr ea1 ea2) && (eq_list eq_expr eb1 eb2)
+  | (IfExpr(_,ea1,eb1,ec1),IfExpr(_,ea2,eb2,ec2)) -> (eq_expr ea1 ea2) && (eq_expr eb1 eb2) && (eq_expr ec1 ec2)
+  | (PrintExpr(_,e1),PrintExpr(_,e2)) -> eq_expr e1 e2
+  | (FieldExpr(_,e1,f1),FieldExpr(_,e2,f2)) -> (eq_expr e1 e2) && (eq_ident f1 f2)
+  | (ObjectExpr(_,fl1),ObjectExpr(_,fl2)) -> eq_list (fun (i1,e1) (i2,e2) -> (eq_ident i2 i2) && (eq_expr e1 e2)) fl1 fl2
+  | _ -> false
+
+and eq_bop (b1 : bop_t) (b2 : bop_t) = match (b1,b2) with
+  | (AndBop,AndBop) -> true
+  | (OrBop,OrBop) -> true
+  | (PlusBop,PlusBop) -> true
+  | (MinusBop,MinusBop) -> true
+  | (TimesBop,TimesBop) -> true
+  | (DivBop,DivBop) -> true
+  | (EqBop,EqBop) -> true
+  | (NeqBop,NeqBop) -> true
+  | (LtBop,LtBop) -> true
+  | (LteBop,LteBop) -> true
+  | (GtBop,GtBop) -> true
+  | (GteBop,GteBop) -> true
+  | _ -> false
+
+and eq_uop (u : uop_t) (u : uop_t) = match (u,u) with
+  | (NotUop,NotUop) -> true
+  | (NegUop,NegUop) -> true
+  | _ -> false
+
+and eq_value (v1 : value_t) (v2 : value_t) = match (v1,v2) with
+  | (NumVal(n1),NumVal(n2)) -> eq_float (n1,n2)
+  | (BoolVal(b1),BoolVal(b2)) -> b1=b2
+  | (StrVal(s1),StrVal(s2)) -> s1=s2
+  | (UndefVal,UndefVal) -> true
+  | (ClosureVal(_,(name1,params1,bl1,t1)),ClosureVal(_,(name2,params2,bl2,t2))) ->
+    (eq_option eq_ident name1 name2) && (eq_list eq_typed_var params1 params2)
+    && (eq_block bl1 bl2) && (eq_option eq_typ t1 t2)
+  | (RefVal(a1),RefVal(a2)) -> a1=a2
+  | _ -> false
+
+and eq_block (bl1 : block_t) (bl2 : block_t) = match (bl1,bl2) with
+  | (ReturnBlock(_,e1),ReturnBlock(_,e2)) -> eq_expr e1 e2
+  | (StmtBlock(_,s1,bl1),StmtBlock(_,s2,bl2)) -> (eq_stmt s1 s2) && (eq_block bl1 bl2)
+  | _ -> false
+
+and eq_typed_var (tv1 : typed_ident_t) (tv2 : typed_ident_t) = match (tv1,tv2) with
+  | ((v1,t1),(v2,t2)) -> (eq_ident v1 v2) && (eq_option eq_typ t1 t2)
+
+and eq_ident (x1 : ident_t) (x2 : ident_t) =
+  (x1=x2)
+
+(* convert value to float *)
+let to_num = fun (v : value_t) -> match v with
+| NumVal(n) -> n
+| BoolVal(true) -> 1.0
+| BoolVal(false) -> 0.0
+| StrVal(s) -> 
+  if (String.trim s)="" then 0.0
+  else (try float_of_string s with _ -> Float.nan)
+| UndefVal -> Float.nan
+| ClosureVal(_,_) -> Float.nan
+| RefVal(_) -> Float.nan
+
+(* convert value to bool *)
+let to_bool = fun (v : value_t) -> match v with
+| NumVal(n) -> if (eq_float (n,0.0) || eq_float (n,Float.nan)) then false else true
+| BoolVal(b) -> b
+| StrVal("") -> false
+| StrVal(_) -> true
+| UndefVal -> false
+| ClosureVal(_,_) -> true
+| RefVal(_) -> true
+
+(* convert value to string *)
+let to_str = fun (v : value_t) -> match v with
+| NumVal(n) -> str_float n
+| BoolVal(b) -> string_of_bool b
+| StrVal(s) -> s
+| UndefVal -> "undefined"
+| ClosureVal(_,_) -> str_value v
+| RefVal(_) -> "[object Object]"
+
+let str_access = fun a -> match a with
+| Mutable   -> "mut"
+| Immutable -> "const"
+
+let rec str_environment = fun e -> match e with
+| (nml,im) ->
+  Printf.sprintf "([%s],\n%s)"
+  (str_x_list str_name_map nml "; ")
+  (str_ident_map im)
+
+and str_name_map = fun nm ->
+  str_x_list (fun (k,i) -> Printf.sprintf "%s->%d" k i) (StringMap.bindings nm) ", "
+
+and str_ident_map = fun im ->
+  str_x_list (fun (k,(m,v)) -> Printf.sprintf "%d->(%s,%s)" k (str_access m) (str_value v)) (IntMap.bindings im) ", "
+
+};

@@ -1,0 +1,9 @@
+javascript
+*.cm*
+*.o*
+*.lines
+*.sw*
+*.mli
+*.types
+javascript_lexer.ml
+javascript_parser.ml

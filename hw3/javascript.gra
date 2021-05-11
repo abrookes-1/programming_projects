@@ -1,0 +1,275 @@
+// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Operator_Precedence
+
+parser Start : program_t =
+  | Program eof # { $1 }
+;
+
+parser Program =
+  | Expr1              # ExprProgram
+  | Stmt ';':~ Program # StmtProgram
+;
+
+parser Stmt =
+  | ConstKw:~ Ident1 '=':~ Expr1 # { ConstStmt(get_current_pos (), $2, $4) } : (ConstStmt of pos_t * ident_t * expr_t)
+  | LetKw:~ Ident1 '=':~ Expr1   # { LetStmt(get_current_pos (), $2, $4) } : (LetStmt of pos_t * ident_t * expr_t)
+  | Expr1 '=':~ Expr1           # AssignStmt
+;
+
+ast Typ : typ_t =
+  | ~ # : (UnitType)
+  | ~ # : (BoolType)
+  | ~ # : (NumType)
+  | ~ # : (StrType)
+  | Typ* # : (TupleType of typ_t list)
+  | Typ Typ # : (FuncType of typ_t * typ_t)
+;
+
+ast VarAccess =
+  | ~ # : (Mutable)
+  | ~ # : (Immutable)
+;
+
+ast Uop =
+  | ~ # : (NotUop)
+  | ~ # : (NegUop)
+;
+
+ast Bop =
+  | ~ # : (AndBop)
+  | ~ # : (OrBop)
+  | ~ # : (PlusBop)
+  | ~ # : (MinusBop)
+  | ~ # : (TimesBop)
+  | ~ # : (DivBop)
+  | ~ # : (EqBop)
+  | ~ # : (NeqBop)
+  | ~ # : (LtBop)
+  | ~ # : (LteBop)
+  | ~ # : (GtBop)
+  | ~ # : (GteBop)
+;
+
+ast Expr =
+  | ~ # : (VarExpr of pos_t * ident_t)
+  | ~ # : (ValExpr of pos_t * value_t)
+  | ~ # : (UopExpr of pos_t * uop_t * expr_t)
+  | ~ # : (BopExpr of pos_t * expr_t * bop_t * expr_t)
+  | ~ # : (IfExpr of pos_t * expr_t * expr_t * expr_t)
+  | ~ # : (PrintExpr of pos_t * expr_t)
+  | ~ # : (CallExpr of pos_t * expr_t * expr_t list)
+  | ~ # : (FieldExpr of pos_t * expr_t * ident_t)
+  | ~ # : (ObjectExpr of pos_t * field_t list)
+;
+
+parser Expr1 : expr_t =
+  | Ident1                                     # { VarExpr(get_current_pos (),$1) }
+  | Value1                                    # { ValExpr(get_current_pos (),$1) }
+  | '-'@assoc:="nonassoc"@prec:=3:~ Expr1     # { UopExpr(get_current_pos (),NegUop,$2) }
+  | '!'@assoc:="nonassoc"@prec:=3:~ Expr1     # { UopExpr(get_current_pos (),NotUop,$2) }
+  | Expr1 '*'@assoc:="left"@prec:=4:~ Expr1   # { BopExpr(get_current_pos (),$1,TimesBop,$3) }
+  | Expr1 '/'@assoc:="left"@prec:=4:~ Expr1   # { BopExpr(get_current_pos (),$1,DivBop,$3) }
+  | Expr1 '+'@assoc:="left"@prec:=5:~ Expr1   # { BopExpr(get_current_pos (),$1,PlusBop,$3) }
+  | Expr1 '-'@assoc:="left"@prec:=5:~ Expr1   # { BopExpr(get_current_pos (),$1,MinusBop,$3) }
+  | Expr1 "<="@assoc:="left"@prec:=7:~ Expr1  # { BopExpr(get_current_pos (),$1,LteBop,$3) }
+  | Expr1 '<'@assoc:="left"@prec:=7:~ Expr1   # { BopExpr(get_current_pos (),$1,LtBop,$3) }
+  | Expr1 ">="@assoc:="left"@prec:=7:~ Expr1  # { BopExpr(get_current_pos (),$1,GteBop,$3) }
+  | Expr1 '>'@assoc:="left"@prec:=7:~ Expr1   # { BopExpr(get_current_pos (),$1,GtBop,$3) }
+  | Expr1 "==="@assoc:="left"@prec:=8:~ Expr1 # { BopExpr(get_current_pos (),$1,EqBop,$3) }
+  | Expr1 "!=="@assoc:="left"@prec:=8:~ Expr1 # { BopExpr(get_current_pos (),$1,NeqBop,$3) }
+  | Expr1 '?'@assoc:="nonassoc"@prec:=11:~
+    Expr1 ':'@assoc:="nonassoc"@prec:=12:~
+    Expr1                                     # { IfExpr(get_current_pos (),$1,$3,$5) }
+  | "console":~ '.':~
+    "log":~ '(':~ Expr1 ')':~                 # { PrintExpr(get_current_pos (),$5) }
+  | Expr1 '('@assoc:="nonassoc"@prec:=1:~
+    ExprList ')':~                            # { CallExpr(get_current_pos (), $1,$3) }
+  | Expr1 '.'@assoc:="left"@prec:=2:~ Ident1  # { FieldExpr(get_current_pos (),$1,$3) }
+  | '{':~ FieldList '}':~                     # { ObjectExpr(get_current_pos (),$2) }
+;
+
+ast Value =
+  | ~ # : (NumVal of float)
+  | ~ # : (BoolVal of bool)
+  | ~ # : (StrVal of string)
+  | ~ # : (UndefVal)
+  | ~ # : (ClosureVal of name_map_t * lambda_t)
+  | ~ # : (RefVal of address_t)
+;
+
+ast Ident =
+  | ~ # : string
+;
+
+ast Address =
+  | ~ # : int
+;
+
+ast TypedIdent =
+  | ~ # : (ident_t * typ_t option)
+;
+
+ast NameMap =
+  | ~ # : ((int) StringMap.t)
+;
+
+ast Lambda =
+  | ~ # : (ident_t option * typed_ident_t list * block_t * typ_t option)
+  // name, params, body, return_type
+;
+
+parser Value1 : value_t =
+  | Number   # { NumVal($1) }
+  | Bool     # { BoolVal($1) }
+  | String   # { StrVal($1) }
+  | UndefKw  # { UndefVal }
+  | Lambda1  # { ClosureVal(StringMap.empty, $1) }
+;
+
+parser Lambda1 : lambda_t =
+  | FuncKw:~ Ident1? '(':~ IdentList ')':~ '{':~ Block '}':~ # { ($2, List.map (fun v -> (v,None)) $4, $7, None) }
+;
+
+parser Block : block_t =
+  | RetKw Expr1      # ReturnBlock
+  | Stmt ';':~ Block # StmtBlock
+;
+
+parser FieldList :(field_t list) =
+  | ~                             # { [] }
+  | Field (',':~ Field # { $2 })* # { $1::$2 }
+;
+
+parser ExprList :(expr_t list) =
+  | ~                             # { [] }
+  | Expr1 (',':~ Expr1 # { $2 })* # { $1::$2 }
+;
+
+parser IdentList :(ident_t list) =
+  | ~                               # { [] }
+  | Ident1 (',':~ Ident1 # { $2 })* # { $1::$2 }
+;
+
+parser Field : (ident_t * expr_t) =
+  | Ident1 ':':~ Expr1 # { ($1, $3) }
+;
+
+parser Bool : bool =
+  | TrueKw # { true }
+  | FalseKw # { false }
+;
+
+keyword ConstKw = "const" ;
+keyword LetKw   = "let" ;
+keyword FuncKw  = "function" ;
+keyword RetKw   = "return" ;
+keyword UndefKw = "undefined" ;
+keyword TrueKw = "true" ;
+keyword FalseKw = "false" ;
+
+lexer Ident1 @map:=true @order:=300 =
+  | [a-zA-Z_][0-9a-zA-Z_]*
+;
+
+lexer Number : float =
+  | [0-9]* ('.' [0-9]+)?
+;
+
+lexer String @newline:=true {my_unescaped (fst (strip_quotes x))} =
+  | '"' (('\\' ('\\' | '"' | '\'' | [ntbr] | '\n' | [0-9a-fA-F] [0-9a-fA-F])) | [^\\\"])* '"'
+;
+
+// throw away comments
+lexer SingleLineComment @newline:=true :~ =
+  | "//" [^\n]*
+;
+
+lexer MultiLineComment @newline:=true :~ =
+  | "/*" .. "*/"
+;
+
+// throw away whitespace (while remembering the position info)
+lexer Blanks @newline:=true @order:=290 :~ =
+  | [\r\n\t ]+
+;
+
+property utils_code = {
+  module IntMap = Map.Make(
+  struct
+    type t = int
+    let compare = compare
+  end)
+
+  module StringMap = Map.Make(
+  struct
+    type t = string
+    let compare = compare
+  end)
+
+  let my_unescaped s =
+    let s = Str.global_replace (Str.regexp "[\\][\r][\n]") "" s in
+    let s2 = Str.global_replace (Str.regexp "[\\][\n]") "" s in
+    Scanf.unescaped s2
+
+  let strip_quotes (s : string) : (string*bool) =
+    let len = String.length s in
+    if ((len >= 2) && (String.get s 0)='"' && (String.get s (len-1))='"')
+    then (String.sub s 1 (len-2),true) else (s,false)
+};
+
+property ast_code = {
+
+let rec str_program (p : program_t) = match p with
+  | ExprProgram(_,e) -> str_expr e
+  | StmtProgram(_,s,p) -> Printf.sprintf "%s; %s" (str_stmt s) (str_program p)
+
+and str_stmt (s : stmt_t) = match s with
+  | ConstStmt(_,v,e) -> Printf.sprintf "const %s = %s" (str_ident v) (str_expr e)
+  | LetStmt(_,v,e) -> Printf.sprintf "let %s = %s" (str_ident v) (str_expr e)
+  | AssignStmt(_,e1,e2) -> Printf.sprintf "%s = %s" (str_expr e1) (str_expr e2)
+
+and str_expr (e : expr_t) = match e with
+  | VarExpr(_,v) -> Printf.sprintf "%s" (str_ident v)
+  | ValExpr(_,v) -> Printf.sprintf "%s" (str_value v)
+  | UopExpr(_,uop,e) -> Printf.sprintf "(%s %s)" (str_uop uop) (str_expr e)
+  | BopExpr(_,e1,bop,e2) -> Printf.sprintf "(%s %s %s)" (str_expr e1) (str_bop bop) (str_expr e2)
+  | CallExpr(_,e1,e2) -> Printf.sprintf "%s(%s)" (str_expr e1) (str_x_list str_expr e2 ", ")
+  | IfExpr(_,e1,e2,e3) -> Printf.sprintf "(%s ? %s : %s)" (str_expr e1) (str_expr e2) (str_expr e3)
+  | PrintExpr(_,e) -> Printf.sprintf "console.log(%s)" (str_expr e)
+  | FieldExpr(_,e,f) -> Printf.sprintf "%s.%s" (str_expr e) (str_ident f)
+  | ObjectExpr(_,fl) -> Printf.sprintf "{ %s }" (str_x_list (fun (f,e) -> Printf.sprintf "%s:%s" (str_ident f) (str_expr e)) fl ", ")
+
+and str_bop (b : bop_t) = match b with
+  | AndBop -> "&&"
+  | OrBop -> "||"
+  | PlusBop -> "+"
+  | MinusBop -> "-"
+  | TimesBop -> "*"
+  | DivBop -> "/"
+  | EqBop -> "==="
+  | NeqBop -> "!=="
+  | LtBop -> "<"
+  | LteBop -> "<="
+  | GtBop -> ">"
+  | GteBop -> ">="
+
+and str_uop (u : uop_t) = match u with
+  | NotUop -> "!"
+  | NegUop -> "-"
+
+and str_value (v : value_t) = match v with
+  | NumVal(n) -> string_of_float n
+  | BoolVal(b) -> string_of_bool b
+  | StrVal(s) -> s
+  | UndefVal -> "undefined"
+  | ClosureVal(_,(name,params,bl,_)) -> Printf.sprintf "function %s(%s) { %s }" (str_option (fun x -> x) name) (str_x_list str_typed_var params ", ") (str_block bl)
+  | RefVal(_) -> failwith "cannot print reference"
+
+and str_block (bl : block_t) = match bl with
+  | ReturnBlock(_,e) -> Printf.sprintf "return %s" (str_expr e)
+  | StmtBlock(_,s,bl) -> Printf.sprintf "%s; %s" (str_stmt s) (str_block bl)
+
+and str_typed_var (tv : typed_ident_t) = match tv with
+  | (v,t) -> v
+
+and str_ident (x : ident_t) = x
+};
